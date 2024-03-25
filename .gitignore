@@ -1,0 +1,8 @@
+*
+!*.*
+!*/
+.deps/
+nimcache/
+nimblecache/
+htmldocs/
+nim.cfg
