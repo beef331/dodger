@@ -8,7 +8,7 @@ type
     NotJson = "M_NOT_JSON"
     NotFound = "M_NOT_FOUND"
     LimitExceeded = "M_LIMIT_EXCEEDED"
-    Unrecognized = "M_UNRECONGNIZED"
+    Unrecognized = "M_UNRECOGNIZED"
     Unknown = "M_UNKNOWN"
     Unauthorised = "M_UNAUTHORIZED"
     UserDeactivated = "M_USER_DEACTIVATED"
@@ -33,6 +33,5 @@ type
     CannotLeaveServerNoticeRoom = "M_CANNOT_LEAVE_SERVER_NOTICE_ROOM"
 
 
-  MatrixError* = object
+  MatrixError* = object of CatchableError
     kind*: ErrorKind
-    error*: string

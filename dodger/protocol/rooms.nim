@@ -1,18 +1,10 @@
-import std/tables
-import clientevents, accountdatas
+import std/[tables, strutils]
+import events, accountdatas, requestobjs
 import pkg/sunny
 
 type
-  Timeline* = object
-    events*: seq[ClientEvent]
-    prev_batch*: string
-    limited: bool
 
-  StrippedEventState* = object
-    content*: RawJson
-    sender*: string
-    state_key*: string
-    typ* {.json"type".}: string
+
 
   UnsignedData* = object
     age*: int
@@ -36,7 +28,7 @@ type
     events*: seq[ClientEvent]
 
   RoomSummary* = object
-    heroes* {.json"m.heroes".}: string
+    heroes* {.json"m.heroes".}: seq[string]
     invitedMemberCount* {.json"m.invited_member_count".}: int
     joinedMemeberCount* {.json"m.joined_member_count".}: int
 
@@ -57,13 +49,13 @@ type
     unreadThreadNotifications* {.json"unread_thread_notifications".}: UnreadNotifications
 
   KnockState* = object
-    events: seq[StrippedEventState]
+    events*: seq[StrippedEventState]
 
   KnockedRoom* = object
     knockState* {.json"knock_state".}: KnockState
 
   LeftRoom* = object
-    accountData {.json"account_data".}: AccountData
+    accountData* {.json"account_data".}: AccountData
     state*: State
     timeline*: Timeline
 
@@ -72,3 +64,46 @@ type
     join*: Table[string, JoinedRoom]
     knock*: Table[string, KnockedRoom]
     leave*: Table[string, LeftRoom]
+
+
+const roomEventUrl* = " /_matrix/client/v3/rooms/$#/event/$#"
+
+proc eventRequest*(roomId, eventId: string, lazyLoad = true): Request[ClientEvent] =
+  Request[ClientEvent](
+    url: roomEventUrl % [roomId, eventId],
+    reqMethod: HttpGet
+  )
+
+
+type RoomAlias* = object
+  aliases*: seq[string]
+
+proc aliasRequest*(roomId: string): Request[RoomAlias] =
+  Request[RoomAlias](
+    url: "/_matrix/client/v3/rooms/$#/aliases" % roomId,
+    reqMethod: HttpGet
+  )
+
+
+type
+  MessageQuery* = object
+    dir*: string
+    filter*: string
+    frm* {.json"from".}: string
+    limit*: int = 10
+    to*: string
+
+  MessageResponse* = object
+    chunk*: seq[ClientEvent]
+    nd* {.json"end".}: string
+    start*: string
+    state*: seq[ClientEvent]
+
+
+
+proc messageRequest*(roomId: string, query: MessageQuery): Request[MessageResponse] =
+  Request[MessageResponse](
+    url: "/_matrix/client/v3/rooms/$#/messages" % roomId,
+    data: query.toJson(),
+    reqMethod: HttpGet
+  )

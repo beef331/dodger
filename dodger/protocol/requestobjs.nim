@@ -14,10 +14,9 @@ type Request*[T] = object
 type MatrixRequestError* = object
   errcode*, error*: string
 
-proc extract*[T](val: var T, data: string): MatrixError =
+proc extract*[T](val: var T, data: string) =
   var err = MatrixRequestError.fromJson(data)
   if err.errcode != "":
-    MatrixError(kind: parseEnum[ErrorKind](err.errcode), error: err.error)
+    raise (ref MatrixError)(kind: parseEnum[ErrorKind](err.errcode), msg: err.error)
   else:
     val = T.fromJson(data)
-    MatrixError(kind: Nothing)

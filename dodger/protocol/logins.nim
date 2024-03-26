@@ -1,4 +1,4 @@
-import identifiers, information, requestobjs, syncs
+import identifiers, information, requestobjs, syncs, rooms
 import std/[options, strutils, os, tables]
 import pkg/sunny
 
@@ -18,7 +18,6 @@ type
 
   LoginProviders = object
     flows: seq[LoginType]
-
 
   LoginResponse* = object
     access_token*: string
@@ -53,12 +52,11 @@ proc login*(): Request[LoginProviders] =
 when isMainModule:
   import std/[httpclient, uri]
 
-  proc handleRequest[T](client: HttpClient, request: Request[T], doParse: static bool = true): T =
+  proc handleRequest[T](client: HttpClient, request: Request[T]): T =
     let
       url = parseUri("https://www.matrix.org" & request.url)
       resp = client.request(url, request.reqMethod, request.data)
-    echo result.extract resp.body
-
+    result.extract resp.body
 
   var tok: string
   try:
@@ -70,7 +68,7 @@ when isMainModule:
     echo client.handleRequest(login())
     var pw = readFile("/tmp/pw")
     pw.setLen(pw.high)
-    let resp = client.handleRequest(login(Identifier(user: "Elegantbeef"), "Matewrecks", pw))
+    let resp = client.handleRequest(login(Identifier(kind: User, user: "Elegantbeef"), "Matewrecks", pw))
 
 
     discard existsOrCreateDir(getConfigDir() / "matewrecks")
@@ -79,6 +77,11 @@ when isMainModule:
     tok = resp.access_token
 
   let client = newHttpClient(headers = newHttpHeaders({"Authorization": "Bearer " & tok}))
-  let sync = client.handleRequest(syncRequest(timeout = 1000), false)
+  echo client.handleRequest login()
+  var sync = client.handleRequest(syncRequest(timeout = 1000))
 
-
+  for room in sync.rooms.join.keys:
+    let messages = client.handleRequest messageRequest(room, MessageQuery(frm: sync.next_batch))
+    for message in messages.chunk:
+      if message.typ == "m.room.name":
+        echo room, ": ", (tuple[name: string]).fromJson(message.content.string)

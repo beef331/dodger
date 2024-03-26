@@ -1,25 +1,24 @@
 import pkg/sunny
 
 type
+  IdentifierKind* = enum
+    User = "m.id.user"
+    ThirdParty = "m.id.thirdparty"
+    Phone = "m.id.phone"
+
   Identifier* = object
-    user*: string
+    case kind* {.json"type".}: IdentifierKind
+    of User:
+      user*: string
+    of ThirdParty:
+      medium*: string
+      address*:string
+    of Phone:
+      country*: string
+      phone*: string
+
   IdentityProvider* = object
     id*: string
     name*: string
     icon*: string
     brand*: string
-
-const matrixType* = "m.id.user"
-
-type Response = object
-  typ {.json:"type".}: string
-  user: string
-
-proc toJson*(ident: Identifier; buffer: var string) =
-  Response(user: ident.user, typ: matrixType).toJson(buffer)
-
-proc fromJson*(ident: var Identifier; val: JsonValue, input: string) =
-  var response: Response
-  response.fromJson(val, input)
-  assert response.typ == matrixType
-  ident.user = response.user
