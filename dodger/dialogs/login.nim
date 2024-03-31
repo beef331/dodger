@@ -1,40 +1,22 @@
-import pkg/[owlkettle, matrix]
-import ../properties
-import std/[asyncdispatch, uri]
+import pkg/owlkettle
+import ../properties, ../protocol/[logins, identifiers]
+import asyncrequests
+import std/[asyncdispatch, strutils]
+import errors
 
 
 viewable Login:
-  homeserver: string = "https://matrix.org"
   name: string
   pass: string
-  client: AsyncMatrixClient
-  req: typeof(login(AsyncMatrixClient(), "", ""))
-  timeout: EventDescriptor
-
+  device: string
+  proc onLogin(ctx: UserContext)
 
 method view*(login: LoginState): Widget =
-
-  proc asyncHandler(): bool =
-    if hasPendingOperations():
-      try:
-        poll(0)
-      except CatchableError as e:
-        echo e.msg
-    discard login.redraw()
-    result = true # Do not remove event
-
   gui:
     Box:
       orient = OrientY
       spacing = 6
       margin = 12
-
-      Property {.expand: false.}:
-        name = "homeserver"
-        Entry:
-          text = login.homeserver
-          proc changed(server: string) =
-            login.homeserver = server
 
       Property {.expand: false.}:
         name = "Name"
@@ -53,19 +35,30 @@ method view*(login: LoginState): Widget =
             for i in 0..<pass.len:
               pass[i].addr[] = '\0'
 
+      Property {.expand: false.}:
+        name = "Device"
+        Entry:
+          text = login.device
+          placeholder = "Optional name for this device"
+          proc changed(device: string) =
+            login.device = device
+
       Button {.expand: false.}:
         text = "Login"
-        sensitive = login.name.len > 0 and login.pass.len > 0 and login.homeserver.len > 0
+        sensitive = login.name.len > 0 and login.pass.len > 0
         proc clicked() =
-          login.client = newAsyncMatrixClient(login.homeserver)
-          login.req = login.client.login(login.name, login.pass)
-          login.req.addCallback proc(fut: typeof(login.req)) =
-            let val = fut.read
-            echo val
-          login.timeout = addGlobalIdleTask(asyncHandler)
-          for i in 0..<login.pass.len:
-              login.pass[i].addr[] = '\0'
-          echo waitFor login.req
+          proc loginRequest() {.async.} =
+            let userInfo = login.name.split(':')
+            if userInfo.len == 0:
+              errorDialog(login):
+                "No Homeserver provided."
+              return
 
+            let
+              name = userInfo[0]
+              homeserver = userInfo[1]
+              val = await UserContext(homeserver: homeserver).handleRequest(login(Identifier(kind: User, user: name), login.device, login.pass))
+            login.onLogin.callback(UserContext(homeserver: homeserver, token: val.accessToken))
+          asyncCheck loginRequest()
 
 export Login, LoginState

@@ -17,10 +17,10 @@ type
 
   StrippedEventState* = object of Event
     sender*: string
-    state_key*: string
+    stateKey* {.json"state_key".}: string
 
   Timeline* = object
-    events*: seq[ClientEvent]
-    prev_batch*: string
-    limited: bool
+    events*: seq[ClientEventWithoutRoomID]
+    prevBatch* {.json"prev_batch".}: string
+    limited*: bool
 

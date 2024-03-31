@@ -20,8 +20,8 @@ type
     flows: seq[LoginType]
 
   LoginResponse* = object
-    access_token*: string
-    device_id*: string
+    accessToken* {.json"access_token".}: string
+    deviceId* {.json"device_id".}: string
     #expires_in_ms*: Option[int]
     #refresh_token*: Option[string]
     home_server: string
@@ -35,7 +35,7 @@ proc login*(ident: Identifier, deviceName, password: sink string): Request[Login
   var buffer = ""
   type LoginRequest = object
     identifier: Identifier
-    deviceName: string
+    deviceName {.json"device_name".}: string
     password: string
     `type` = "m.login.password"
 
@@ -49,13 +49,20 @@ proc login*(): Request[LoginProviders] =
   Request[LoginProviders](url: loginEndpoint, data: "", reqMethod: HttpGet)
 
 
-when isMainModule:
+when isMainModule or defined(nimsuggest):
   import std/[httpclient, uri]
 
   proc handleRequest[T](client: HttpClient, request: Request[T]): T =
+    when defined dodgerPrintRequests:
+      echo request.reqMethod, ": ", request.url, ": "
+      echo request.data
+
     let
       url = parseUri("https://www.matrix.org" & request.url)
       resp = client.request(url, request.reqMethod, request.data)
+
+    when defined dodgerPrintResponses:
+      echo resp.body
     result.extract resp.body
 
   var tok: string
@@ -76,12 +83,36 @@ when isMainModule:
 
     tok = resp.access_token
 
-  let client = newHttpClient(headers = newHttpHeaders({"Authorization": "Bearer " & tok}))
-  echo client.handleRequest login()
-  var sync = client.handleRequest(syncRequest(timeout = 1000))
+  proc sync(nextBatch: string): SyncResponse =
+    let client = newHttpClient(headers = newHttpHeaders({"Authorization": "Bearer " & tok}))
+    defer: client.close()
+    result = client.handleRequest syncRequest(SyncRequest(timeout: 1000, since: nextBatch))
 
-  for room in sync.rooms.join.keys:
-    let messages = client.handleRequest messageRequest(room, MessageQuery(frm: sync.next_batch))
-    for message in messages.chunk:
-      if message.typ == "m.room.name":
-        echo room, ": ", (tuple[name: string]).fromJson(message.content.string)
+    for name, room in result.rooms.join:
+      var roomInfo: array[RoomEventKind, string]
+      for evt in room.state.events:
+        if evt.typ.startsWith"m.room":
+          try:
+            case parseEnum[RoomEventKind](evt.typ)
+            of Name:
+              roomInfo[Name] = (tuple[name: string]).fromJson(evt.content.string).name
+            of Avatar:
+              roomInfo[Avatar] = evt.content.string
+            else:
+              discard
+          except:
+            discard
+
+      for evt in room.timeline.events:
+        if evt.typ.startsWith"m.room":
+          try:
+            case parseEnum[RoomEventKind](evt.typ)
+            of Message:
+              echo evt.sender, ": ", (tuple[body: string]).fromJson(evt.content.string).body
+            else: discard
+          except:
+            discard
+
+  var syncResp = sync("")
+  while true:
+    syncResp = sync(syncResp.nextBatch)

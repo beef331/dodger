@@ -1,4 +1,4 @@
-import requestobjs, accountdatas, rooms, events
+import requestobjs, accountdatas, rooms, events, queries
 import sunny
 
 type
@@ -11,26 +11,18 @@ type
     accountData* {.json: "account_data".}: AccountData
     rooms*: Rooms
 
+  Filter* = object ## TODO: Move this to it's own module with an API for it
+    lazyLoad* {.json"lazy_load_members".}: bool
+
+  SyncRequest* = object
+    since*: string
+    timeout*: int
+    fullState* {.queryName"full_state".}: bool
+
 const syncEndPoint* = "/_matrix/client/v3/sync"
 
-proc syncRequest*(since: string = "", timeout = 1000): Request[SyncResponse] =
-  type Filter = object ## TODO: Move this to it's own module with an API for it
-    lazyLoad {.json"lazy_load_members".}: bool
-
-  type SyncRequest = object
-    since: string
-    timeout: int
-    filter: Filter
-    fullState {.json"full_state".}: bool
-
-
+proc syncRequest*(req: SyncRequest): Request[SyncResponse] =
   Request[SyncResponse](
-    url: syncEndPoint,
+    url: syncEndPoint & "?" & req.toQuery(),
     reqMethod: HttpGet,
-    data: SyncRequest(
-      since: since,
-      timeout: timeout,
-      filter: Filter(lazyLoad: true),
-      fullState: true
-    ).toJson()
   )
