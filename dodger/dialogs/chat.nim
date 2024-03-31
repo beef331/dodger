@@ -7,13 +7,14 @@ import ../database/datas
 viewable RoomSelection:
   roomId: string
   avatarUrl: string
+  roomName: string
   pixbuf: PixBuf
 
 method view(select: RoomSelectionState): Widget =
   if select.pixbuf != nil:
     gui(Picture(pixbuf = select.pixbuf))
   else:
-    gui(Label(text = "test"))
+    gui(Label(text = select.roomName))
 
 
 viewable ChatWindow:
@@ -28,7 +29,7 @@ method view(chatWindow: ChatWindowState): Widget =
   if not chatWindow.inited:
     chatWindow.inited = true
     for room in chatWindow.db.find(seq[RoomData], sql"SELECT * FROM ROOMDATA"):
-      if room.name != "" and room.avatar != "":
+      if room.avatar != "":
         let avatarData = AvatarData.fromJson(room.avatar)
         if avatarData.url != "":
           let
@@ -49,6 +50,9 @@ method view(chatWindow: ChatWindowState): Widget =
             except:
               discard
           )
+      else:
+        ##chatWindow.roomSelect.add gui(RoomSelection(roomId = room.roomId, roomName = room.name))
+
 
 
   result = gui:
@@ -56,6 +60,6 @@ method view(chatWindow: ChatWindowState): Widget =
       Box:
         orient = OrientY
         for room in chatWindow.roomSelect:
-          insert(room)
+          insert(room) {.expand: false.}
 
 export ChatWindow, ChatWindowState
