@@ -112,7 +112,7 @@ type
 
   AvatarData* = object
     url*: string
-    content*: ImageInfo
+    info*: ImageInfo
 
   TopicData* = object
     topic* {.json",required".}: string

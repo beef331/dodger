@@ -1,6 +1,7 @@
 import pkg/[owlkettle, ponairi, sunny]
 import dialogs/[login, errors, asyncrequests, chat]
 import protocol/[syncs, rooms, infos]
+import database/datas
 import std/[asyncdispatch, os, options, tables, strutils]
 
 viewable App:
@@ -10,17 +11,6 @@ viewable App:
   context: UserContext
   db: DbConn
   syncing: bool
-
-type
-  UserData = object
-    lastSync: string
-    token: string
-    homeserver: string
-
-  RoomData* = object
-    roomId* {.primary.}: string
-    avatar*: string
-    name*: string
 
 let
   dataDir = getConfigDir() / "dodger"
@@ -51,9 +41,8 @@ method view(app: AppState): Widget =
         proc onLogin(ctx: UserContext) =
           app.context = ctx
           writeFile dataPath, UserData(homeserver: ctx.homeserver, token: ctx.token).toJson()
-          app.currentView = gui(ChatWindow())
   elif app.currentView.isNil:
-    app.currentView = gui(ChatWindow())
+    app.currentView = gui(ChatWindow(db = app.db, context = app.context))
   else:
     if not app.syncing:
       proc syncCall(nextBatch: string, timeout: int) {.async.} =
