@@ -1,12 +1,13 @@
 import std/[httpclient, asyncdispatch, os, uri, strutils]
-import ../protocol/[requestobjs]
+import ../protocol/[requestobjs, syncs]
 
 let cacheDir* = getCacheDir() / "dodger"
 
-type UserContext* = object # What to call this?
+type UserContext* = ref object # What to call this?
   homeserver*: string
   token*: string
   nextSync*: string
+  onSync: seq[proc(_: SyncResponse)]
 
 
 proc handleRequest*[T](context: UserContext, request: Request[T]): Future[T] {.async.} =
@@ -47,8 +48,14 @@ proc downloadMxcToCache*(context: UserContext, fileUrl, ext: string) {.async.} =
       client.headers = newHttpHeaders({"Authorization": "Bearer " & context.token})
     discard existsOrCreateDir cacheDir / theUri.hostname
     echo "https://$#/_matrix/media/v3/download/$#$#" % [context.homeserver, theUri.hostname, theUri.path], " to: ", dest
-    asyncCheck downloadFile(client, "https://$#/_matrix/media/v3/download/$#$#" % [context.homeserver, theUri.hostname, theUri.path], dest)
+    await downloadFile(client, "https://$#/_matrix/media/v3/download/$#$#" % [context.homeserver, theUri.hostname, theUri.path], dest)
+  else:
+    await sleepAsync(0)
 
 
+proc onSync*(ctx: UserContext, resp: SyncResponse) =
+  for evt in ctx.onSync:
+    evt(resp)
 
-
+proc addSyncEvent*(ctx: UserContext, evt: proc(_: SyncResponse)) =
+  ctx.onSync.add evt

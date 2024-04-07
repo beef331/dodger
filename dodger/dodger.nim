@@ -1,6 +1,6 @@
 import pkg/[owlkettle, ponairi, sunny]
 import dialogs/[login, errors, asyncrequests, chat]
-import protocol/[syncs, rooms, infos]
+import protocol/[syncs, rooms, infos, roomevents]
 import database/datas
 import std/[asyncdispatch, os, options, tables, strutils]
 
@@ -45,9 +45,10 @@ method view(app: AppState): Widget =
     app.currentView = gui(ChatWindow(db = app.db, context = app.context))
   else:
     if not app.syncing:
+      let fullSync = app.context.nextSync == ""
       proc syncCall(nextBatch: string, timeout: int) {.async.} =
         await sleepAsync(timeout)
-        let sync = await handleRequest(app.context, syncRequest(SyncRequest(since: nextBatch, timeout: timeout)))
+        let sync = await handleRequest(app.context, syncRequest(SyncRequest(since: nextBatch, timeout: timeout, fullState: fullSync)))
         app.context.nextSync = sync.nextBatch
         app.syncing = false
         for roomId, room in sync.rooms.join:
@@ -60,10 +61,16 @@ method view(app: AppState): Widget =
                   data.name = NameData.fromJson(evt.content.string).name
                 of Avatar:
                   data.avatar = evt.content.string
+                of Create:
+                  let create = CreateEvent.fromJson(evt.content.string)
+                  data.roomType = create.typ
                 else:
                   discard
               except: discard
           app.db.upsert(data)
+        app.context.onSync(sync)
+
+
         writeFile dataPath, UserData(homeserver: app.context.homeserver, token: app.context.token, lastSync: sync.nextBatch).toJson()
 
       asyncCheck syncCall(app.context.nextSync, 1000)
@@ -85,6 +92,7 @@ let data =
     UserData.fromJson(readFile(dataPath))
   except:
     UserData()
+setControlCHook proc() {.noconv.} = discard
 
 brew:
   gui:

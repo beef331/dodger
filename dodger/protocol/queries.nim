@@ -12,7 +12,7 @@ proc toQuery*(obj: object): string =
         name
     let query = field.toQuery()
     if query.len > 0:
-      result.add name & "=" & query
+      result.add theName & "=" & query
       result.add "&"
   if result[^1] == '&':
     result.setLen(result.high)

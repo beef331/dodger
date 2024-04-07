@@ -10,3 +10,6 @@ type
     roomId* {.primary.}: string
     avatar*: string
     name*: string
+    roomType*: string
+
+proc isSpace*(room: RoomData): bool = room.name == "m.space"
