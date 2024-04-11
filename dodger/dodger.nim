@@ -45,14 +45,19 @@ method view(app: AppState): Widget =
     app.currentView = gui(ChatWindow(db = app.db, context = app.context))
   else:
     if not app.syncing:
-      let fullSync = app.context.nextSync == ""
+      let fullSync = app.context.nextSync == "" or true
       proc syncCall(nextBatch: string, timeout: int) {.async.} =
         await sleepAsync(timeout)
         let sync = await handleRequest(app.context, syncRequest(SyncRequest(since: nextBatch, timeout: timeout, fullState: fullSync)))
         app.context.nextSync = sync.nextBatch
         app.syncing = false
         for roomId, room in sync.rooms.join:
-          var data = RoomData(roomId: roomId)
+          let oldRoom = app.db.find(Option[RoomData], sql "SELECT * FROM ROOMDATA WHERE roomId = '" & roomId & "'")
+          var data =
+            if oldRoom.isSome:
+              oldRoom.get()
+            else:
+              RoomData(roomId: roomId)
           for evt in room.state.events:
             if evt.typ.startsWith"m.room":
               try:

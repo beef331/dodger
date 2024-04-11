@@ -1,5 +1,5 @@
 import pkg/[owlkettle, ponairi, sunny]
-import std/[asyncdispatch, uri, os, strutils, sugar, tables]
+import std/[asyncdispatch, uri, os, strutils, sugar, tables, algorithm, sets]
 import asyncrequests, messages
 import ../protocol/[requestobjs, syncs, rooms, events]
 import ../database/datas
@@ -39,20 +39,23 @@ viewable ChatWindow:
   context: UserContext
   roomSelect: seq[RoomSelection]
   inited: bool
+  messagesNextQuery: Table[string, string]
+  querying: HashSet[string]
   messages: Table[string, seq[Msg]]
 
-proc getMessages*(context: UserContext, room: string): Future[seq[Msg]] {.async.} =
-  let messages = await context.handleRequest(messageRequest(room, MessageQuery(dir: Reversed, limit: 10)))
+proc getMessages*(context: UserContext, room: string, frm = ""): Future[(string, seq[Msg])] {.async.} =
+  let messages = await context.handleRequest(messageRequest(room, MessageQuery(dir: Reversed, limit: 30, frm: frm)))
   for evt in messages.chunk:
     try:
       if parseEnum[RoomEventKind](evt.typ) == Message:
-        result.add:
+        result[1].add:
           gui:
             Msg:
               message = MessageData.fromJson(evt.content.string).body
               sender = evt.sender
               eventId = evt.eventId
     except: discard
+  result[0] = messages.nd
 
 
 method view(chatWindow: ChatWindowState): Widget =
@@ -64,8 +67,10 @@ method view(chatWindow: ChatWindowState): Widget =
         # Get the last few messages to make the client usable
         capture name:
           let fut = getMessages(chatWindow.context, name)
-          fut.addCallback proc(msgs: Future[seq[Msg]]) =
-            chatWindow.messages[name].add msgs.read
+          fut.addCallback proc(msgs: Future[(string, seq[Msg])]) =
+            let (nd, msgs) = msgs.read()
+            chatWindow.messages[name].add msgs
+            chatWindow.messagesNextQuery[name] = nd
             discard chatWindow.app.redraw()
 
       for evt in room.timeline.events:
@@ -90,8 +95,10 @@ method view(chatWindow: ChatWindowState): Widget =
           # Get the last few messages to make the client usable
           capture name:
             let fut = getMessages(chatWindow.context, name)
-            fut.addCallback proc(msgs: Future[seq[Msg]]) =
-              chatWindow.messages[name].add msgs.read
+            fut.addCallback proc(msgs: Future[(string, seq[Msg])]) =
+              let (nd, msgs) = msgs.read()
+              chatWindow.messages[name].add msgs.reversed
+              chatWindow.messagesNextQuery[name] = nd
               discard chatWindow.app.redraw()
 
         if room.avatar != "":
@@ -146,10 +153,23 @@ method view(chatWindow: ChatWindowState): Widget =
           for room in chatWindow.roomSelect:
             insert(room) {.expand: false, hAlign: AlignStart.}
       ScrolledWindow {.expand: true.}:
+        proc edgeOvershot(edge: Edge) =
+          if (edge == EdgeTop) and chatWindow.roomId != "" and chatWindow.roomId notin chatWindow.querying:
+            let
+              name = chatWindow.roomID
+              next = chatWindow.messagesNextQuery.getOrDefault(name, "")
+              fut = getMessages(chatWindow.context, name, next)
+            chatWindow.querying.incl name
+            fut.addCallback proc(msgs: Future[(string, seq[Msg])]) =
+              let (nd, msgs) = msgs.read()
+              chatWindow.messages[name] = msgs & chatWindow.messages[name]
+              chatWindow.messagesNextQuery[name] = nd
+              chatWindow.querying.excl name
+              discard chatWindow.app.redraw()
         Box:
           orient = OrientY
           if chatWindow.roomId in chatWindow.messages:
-            for i in chatWindow.messages[chatWindow.roomId].high.countdown(0):
-              insert(chatWindow.messages[chatWindow.roomId][i]) {.expand: false.}
+            for msg in  chatWindow.messages[chatWindow.roomId]:
+              insert(msg) {.expand: false.}
 
 export ChatWindow, ChatWindowState
