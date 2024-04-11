@@ -1,7 +1,7 @@
 import pkg/[owlkettle, ponairi, sunny]
 import std/[asyncdispatch, uri, os, strutils, sugar, tables, algorithm, sets]
 import asyncrequests, messages
-import ../protocol/[requestobjs, syncs, rooms, events]
+import ../protocol/[requestobjs, syncs, rooms, events, users]
 import ../database/datas
 
 viewable RoomSelection:
@@ -33,6 +33,9 @@ method view(select: RoomSelectionState): Widget =
             select.clicked.callback(select.roomId)
             discard select.app.redraw()
 
+var names: Table[string, string]
+
+
 viewable ChatWindow:
   roomId: string
   db: DbConn
@@ -46,15 +49,20 @@ viewable ChatWindow:
 proc getMessages*(context: UserContext, room: string, frm = ""): Future[(string, seq[Msg])] {.async.} =
   let messages = await context.handleRequest(messageRequest(room, MessageQuery(dir: Reversed, limit: 30, frm: frm)))
   for evt in messages.chunk:
-    try:
-      if parseEnum[RoomEventKind](evt.typ) == Message:
-        result[1].add:
-          gui:
-            Msg:
-              message = MessageData.fromJson(evt.content.string).body
-              sender = evt.sender
-              eventId = evt.eventId
-    except: discard
+    if evt.typ.startsWith"m.room" and parseEnum[RoomEventKind](evt.typ) == Message:
+      let name =
+        if evt.sender in names:
+          names[evt.sender]
+        else:
+          let name = await(context.handleRequest(displayNameRequest(evt.sender))).name
+          names[evt.sender] = name
+          name
+      result[1].add:
+        gui:
+          Msg:
+            message = MessageData.fromJson(evt.content.string).body
+            sender = name
+            eventId = evt.eventId
   result[0] = messages.nd
 
 

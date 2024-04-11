@@ -106,6 +106,7 @@ type
     HistoryVisibility = "m.room.history_visibility"
     GuestAccess = "m.room.guest_access"
     RelatedGroups = "m.room.related_groups"
+    Redaction = "m.room.redaction"
 
   NameData* = object
     name* {.json",required".}: string
